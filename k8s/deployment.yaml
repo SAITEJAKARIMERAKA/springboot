@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: demo
-          image: YOUR_DOCKERHUB_USER/demo-app:latest
+          image: saitejakarimeraka3577/demo-app:latest
           ports:
             - containerPort: 8080
           readinessProbe:
