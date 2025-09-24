@@ -2,8 +2,7 @@ pipeline {
   agent any
 
   tools {
-    jdk 'JDK17'    // ensure JDK17 is configured in Jenkins Global Tool Config
-    maven 'Maven3' // optional
+    jdk 'JDK17'    // keep JDK tool only if you still need java on agent (optional)
   }
 
   environment {
@@ -12,13 +11,10 @@ pipeline {
     K8S_NAMESPACE       = 'default'
     K8S_DEPLOYMENT      = 'demo-deployment'
 
-    // Credentials (from your screenshot)
-    DOCKER_CREDS_ID     = 'DOCKERHUBCRED'   // Docker Hub username/password
-    AWS_CRED_ID         = 'aws_credentials' // AWS credentials (used to update kubeconfig for EKS)
-
-    // Required for EKS path
-    EKS_CLUSTER_NAME    = 'springbootapplication-cluster' 
-    AWS_REGION          = 'ap-southeast-2'            
+    DOCKER_CREDS_ID     = 'DOCKERHUBCRED'
+    AWS_CRED_ID         = 'aws_credentials'
+    EKS_CLUSTER_NAME    = 'your-eks-cluster-name' // update
+    AWS_REGION          = 'ap-south-1'            // update
   }
 
   options {
@@ -35,16 +31,6 @@ pipeline {
           env.IMAGE_TAG = "${GIT_SHA}"
           echo "Using image tag: ${env.IMAGE_TAG}"
         }
-      }
-    }
-
-    stage('Build (Maven)') {
-      environment {
-        JAVA_HOME = "${tool 'JDK17'}"
-        PATH = "${JAVA_HOME}/bin:${env.PATH}"
-      }
-      steps {
-        sh 'mvn -B -DskipTests clean package'
       }
     }
 
@@ -79,22 +65,14 @@ pipeline {
     stage('Deploy to EKS (AWS creds)') {
       steps {
         echo "Using AWS credentials id: ${env.AWS_CRED_ID} to update kubeconfig and deploy to EKS"
-        // Uses the Amazon Web Services Credentials plugin binding
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: "${env.AWS_CRED_ID}"]]) {
           sh '''
             set -e
-            # Verify required CLIs are present
             aws --version || { echo "aws CLI not found on agent"; exit 1; }
             kubectl version --client=true || { echo "kubectl not found on agent"; exit 1; }
-            docker --version || echo "docker not found (if using docker on agent, ensure it's installed)"
-
-            # Create/update kubeconfig for EKS using bound AWS creds (AWS_ACCESS_KEY_ID & AWS_SECRET_ACCESS_KEY)
             aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER_NAME}
-
-            # sanity check
             kubectl get nodes -n ${K8S_NAMESPACE} --no-headers -o wide || true
 
-            # deploy or update image
             if kubectl get deployment ${K8S_DEPLOYMENT} -n ${K8S_NAMESPACE} >/dev/null 2>&1; then
               kubectl set image deployment/${K8S_DEPLOYMENT} demo=${IMAGE_NAME}:${IMAGE_TAG} -n ${K8S_NAMESPACE}
             else
